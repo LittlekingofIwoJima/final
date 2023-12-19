@@ -1,0 +1,60 @@
+
+```{r}
+# Install and load necessary packages
+if (!require("haven")) install.packages("haven")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("RColorBrewer")) install.packages("RColorBrewer")
+
+library(haven)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+
+# Function to load SAS datasets
+load_sas_data <- function(filename) {
+  read_sas(filename)
+}
+
+# Load ADAE and ADSL data
+adae <- load_sas_data("adae_pds2019.sas7bdat")
+adsl <- load_sas_data("adsl_pds2019.sas7bdat")
+
+# Merge the ADAE and ADSL datasets by subject ID
+combined_data <- left_join(adae, adsl, by = "SUBJID")
+
+# Categorize age into groups
+combined_data$age_group <- cut(combined_data$AGE, breaks = c(-Inf, 30, 60, Inf), labels = c("<30", "30-60", ">60"))
+
+# Summarize AE counts by age group and severity
+ae_summary <- combined_data %>%
+  group_by(age_group, AESEVCD) %>%
+  summarise(ae_count = n(), .groups = 'drop')
+
+# Bar plot for visualizing the summarized AE data
+ggplot(ae_summary, aes(x = age_group, y = ae_count, fill = as.factor(AESEVCD))) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  scale_fill_brewer(palette = "Set1") +
+  labs(title = "Adverse Event Severity Across Age Groups",
+       x = "Age Group",
+       y = "Count of Adverse Events",
+       fill = "Severity Code") +
+  theme_minimal()
+
+# Perform a Chi-squared test for independence between AE severity and age groups
+ae_table <- table(combined_data$age_group, combined_data$AESEVCD)
+chi_squared_test <- chisq.test(ae_table)
+
+# Output the result of the Chi-squared test
+chi_squared_test
+
+# Recode AESEVCD to a binary outcome (1 for the most severe level, 0 for others)
+combined_data$AESEVCD_binary <- ifelse(combined_data$AESEVCD == 3, 1, 0)
+
+# Fit the binary logistic regression model
+logistic_model <- glm(AESEVCD_binary ~ age_group, data = combined_data, family = binomial())
+
+# Output the summary of the logistic regression model
+summary(logistic_model)
+
+```
